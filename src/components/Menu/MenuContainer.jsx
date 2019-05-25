@@ -1,284 +1,419 @@
-import React, { Component } from 'react';
-import MenuButton from './MenuButton';
-import ProgressBarMenuButton from './ProgressBarMenuButton';
-import { buildDomainProps, buildSessionProps, buildLocalAdminProps, buildGroupMembershipProps, buildACLProps } from 'utils';
-import { If, Then, Else } from 'react-if';
-const { dialog, clipboard } = require('electron').remote
-var fs = require('fs')
-var async = require('async')
+import React, { Component } from "react";
+import MenuButton from "./MenuButton";
+import ProgressBarMenuButton from "./ProgressBarMenuButton";
+import {
+    buildGpoAdminJson,
+    buildSessionJson,
+    buildUserJson,
+    buildComputerJson,
+    buildDomainJson,
+    buildGpoJson,
+    buildGroupJson,
+    buildOuJson
+} from "utils";
+import { If, Then, Else } from "react-if";
+import { remote } from "electron";
+const { dialog, app } = remote;
+import { unlinkSync, createReadStream, createWriteStream, statSync } from "fs";
+import { eachSeries } from "async";
+import { Parse } from "unzipper";
+import { join } from "path";
+
+import { withParser } from "stream-json/filters/Pick";
+import { streamArray } from "stream-json/streamers/StreamArray";
+import { chain } from "stream-chain";
+import { connectTo } from "stream-json/Assembler";
+import { isZipSync } from 'is-zip-file';
 
 export default class MenuContainer extends Component {
-	constructor(){
-		super()
+    constructor() {
+        super();
 
-		this.state = {
-			refreshHover: false,
-			uploading: false,
-			progress: 0,
-			parser: null
-		}
+        this.state = {
+            refreshHover: false,
+            uploading: false,
+            progress: 0,
+            cancelled: false
+        };
 
-		emitter.on('cancelUpload', this.cancelUpload.bind(this))
-	}
+        emitter.on("cancelUpload", this.cancelUpload.bind(this));
+        emitter.on("filedrop", this.fileDrop.bind(this))
+        emitter.on("importShim", this._importClick.bind(this))
+    }
 
-	cancelUpload(){
-		this.state.parser.abort()
-		setTimeout(function(){
-			this.setState({uploading: false})
-		}.bind(this), 1000)
-	}
+    fileDrop(e){
+        let fileNames = []
+        $.each(e.dataTransfer.files, function(_, file){
+            fileNames.push({ path: file.path, name: file.name });
+        });
 
-	_refreshClick(){
-		emitter.emit('graphRefresh')
-	}
+        this.unzipNecessary(fileNames).then(
+            results => {
+                eachSeries(
+                    results,
+                    (file, callback) => {
+                        emitter.emit(
+                            "showAlert",
+                            "Processing file {}".format(file.name)
+                        );
+                        this.getFileMeta(file.path, callback);
+                    },
+                    () => {
+                        setTimeout(
+                            () => {
+                                this.setState({ uploading: false });
+                            },
+                            3000
+                        );
+                        this.addBaseProps();
+                        $.each(results, function(_, file) {
+                            if (file.delete) {
+                                unlinkSync(file.path);
+                            }
+                        });
+                    }
+                );
+            }
+        );
+    }
 
-	_changeLayoutClick(){
-		appStore.dagre = !appStore.dagre
-		emitter.emit('graphRefresh')
-		var type = appStore.dagre ? 'Hierarchical' : 'Directed'
-		emitter.emit('showAlert', 'Changed Layout to ' + type)
-	}
+    cancelUpload() {
+        this.setState({ cancelled: true });
+        setTimeout(
+            _ => {
+                this.setState({ uploading: false });
+            },
+            1000
+        );
+    }
 
-	_exportClick(){
-		emitter.emit('showExport');
-	}
+    _refreshClick(event) {
+        if (event.ctrlKey){
+            emitter.emit("graphReload");
+        }else{
+            emitter.emit("graphRefresh");
+        }
+        
+    }
 
-	_importClick(){
-		var fname = dialog.showOpenDialog({
-			properties: ['openFile']
-		})
-		if (typeof fname !== 'undefined'){
-			emitter.emit('import',fname[0])
-		}
-	}
+    _changeLayoutClick() {
+        emitter.emit("changeLayout");
+    }
 
-	_settingsClick(){
-		emitter.emit('openSettings')
-	}
+    _exportClick() {
+        emitter.emit("showExport");
+    }
 
-	_cancelUploadClick(){
-		emitter.emit('showCancelUpload')
-	}
+    _importClick() {
+        closeTooltip()
+        var fname = dialog.showOpenDialog({
+            properties: ["openFile"]
+        });
+        if (typeof fname !== "undefined") {
+            emitter.emit("import", fname[0]);
+        }
+    }
 
-	_uploadClick(){
-		var input = jQuery(this.refs.fileInput)
-		var files = $.makeArray(input[0].files)
+    _settingsClick() {
+        emitter.emit("openSettings");
+    }
 
-		async.eachSeries(files, function(file, callback){
-			emitter.emit('showAlert', 'Processing file {}'.format(file.name));
-			this.processFile(file.path, file, callback)
-		}.bind(this),
-		function done(){
-			setTimeout(function(){
-				this.setState({uploading: false})
-			}.bind(this), 3000)
-		}.bind(this))
+    _cancelUploadClick() {
+        emitter.emit("showCancelUpload");
+    }
 
-		input.val('')
-	}
+    _uploadClick() {
+        var input = jQuery(this.refs.fileInput);
+        var fileNames = [];
 
-	_aboutClick(){
-		emitter.emit('showAbout')
-	}
+        $.each(input[0].files, function(_, file) {
+            fileNames.push({ path: file.path, name: file.name });
+        });
 
-	processFile(filename, fileobject, callback){
-		var sent = 0
+        this.unzipNecessary(fileNames).then(
+            results => {
+                eachSeries(
+                    results,
+                    (file, callback) => {
+                        emitter.emit(
+                            "showAlert",
+                            "Processing file {}".format(file.name)
+                        );
+                        this.getFileMeta(file.path, callback);
+                    },
+                    () => {
+                        setTimeout(
+                            () => {
+                                this.setState({ uploading: false });
+                            },
+                            3000
+                        );
+                        this.addBaseProps();
+                        $.each(results, function(_, file) {
+                            if (file.delete) {
+                                unlinkSync(file.path);
+                            }
+                        });
+                    }
+                );
 
-		var i;
-		var count = 0;
-		var header = ""
-		var procHeader = true;
-		fs.createReadStream(filename)
-			.on('data', function(chunk) {
-				for (i=0; i < chunk.length; ++i){
-					if (procHeader){
-						header = header + String.fromCharCode(chunk[i])
-					}
-					if (chunk[i] == 10){
-						if (procHeader){
-							procHeader = false;
-						}
-						count++
-					};
-				}
-				
-			})
-			.on('end', function() {
-				count = count - 1
-				var filetype;
-				if (header.includes('UserName') && header.includes('ComputerName') && header.includes('Weight')){
-					filetype = 'sessions'
-				}else if (header.includes('AccountName') && header.includes('AccountType') && header.includes('GroupName')){
-					filetype = 'groupmembership'
-				}else if (header.includes('AccountName') && header.includes('AccountType') && header.includes('ComputerName')){
-					filetype = 'localadmin'
-				}else if (header.includes('SourceDomain') && header.includes('TargetDomain') && header.includes('TrustDirection') && header.includes('TrustType') && header.includes('Transitive')){
-					filetype = 'domain'
-				}else if (header.includes('ActiveDirectoryRights') && header.includes('ObjectType') && header.includes('PrincipalType')){
-					filetype = 'acl'
-				}
+                input.val("");
+            }
+        );
+    }
 
-				if (typeof filetype === 'undefined'){
-					emitter.emit('showAlert', 'Unrecognized CSV Type');
-					return;
-				}
+    async addBaseProps(){
+        let s = driver.session();
+        await s.run("MATCH (n:User) WHERE NOT EXISTS(n.owned) SET n.owned=false");
+        await s.run("MATCH (n:Computer) WHERE NOT EXISTS(n.owned) SET n.owned=false");
+        await s.run("MATCH (n:Group) WHERE n.name =~ 'EVERYONE@.*' SET n.objectsid='S-1-1-0'")
+        await s.run("MATCH (n:Group) WHERE n.name =~ 'AUTHENTICATED USERS@.*' SET n.objectsid='S-1-5-11'")
+        s.close();
+    }
 
-				this.setState({
-					uploading: true,
-					progress: 0
-				})
-				//I have no idea why this workaround is needed. Apparently all my sessions freeze unless I make a random query
-				setTimeout(function(){
-					var sess = driver.session()
-					sess.run('MATCH (n) RETURN (n) LIMIT 1')
-						.then(function(){
-							sess.close()
-						})
-				}, 1000)
+    async unzipNecessary(files) {
+        var index = 0;
+        var processed = [];
+        var tempPath = app.getPath("temp");
+        while (index < files.length) {
+            var path = files[index].path;
+            var name = files[index].name;
 
-				console.time('IngestTime')
-				Papa.parse(fileobject,{
-					header: true,
-					dynamicTyping: true,
-					skipEmptyLines: true,
-					chunkSize: 5242880,
-					//chunkSize: 500000,
-					chunk: function(rows, parser){
-						this.setState({parser: parser})
-						if (rows.data.length === 0){
-							console.timeEnd('IngestTime')
-							parser.abort()
-							this.setState({progress:100})
-							emitter.emit('refreshDBData')
-							callback()
-							return
-						}
-						parser.pause()
-						sent += rows.data.length
-						if (filetype === 'sessions'){
-							var query = 'UNWIND {props} AS prop MERGE (user:User {name:prop.account}) WITH user,prop MERGE (computer:Computer {name: prop.computer}) WITH user,computer,prop MERGE (computer)-[:HasSession {Weight : prop.weight}]-(user)'
-							var props = buildSessionProps(rows.data)
-							var session = driver.session()
-							session.run(query, {props: props})
-								.then(function(){
-									this.setState({progress: Math.floor((sent / count) * 100)})
-									session.close()
-									parser.resume()
-								}.bind(this))
-						}else if (filetype === 'groupmembership'){
-							var props = buildGroupMembershipProps(rows.data)
-							var userQuery = 'UNWIND {props} AS prop MERGE (user:User {name:prop.account}) WITH user,prop MERGE (group:Group {name:prop.group}) WITH user,group MERGE (user)-[:MemberOf]->(group)'
-							var computerQuery = 'UNWIND {props} AS prop MERGE (computer:Computer {name:prop.account}) WITH computer,prop MERGE (group:Group {name:prop.group}) WITH computer,group MERGE (computer)-[:MemberOf]->(group)'
-							var groupQuery = 'UNWIND {props} AS prop MERGE (group1:Group {name:prop.account}) WITH group1,prop MERGE (group2:Group {name:prop.group}) WITH group1,group2 MERGE (group1)-[:MemberOf]->(group2)'
-							
-							var session = driver.session()
-							var tx = session.beginTransaction()
-							var promises = []
+            if (isZipSync(path)) {
+                await createReadStream(path)
+                    .pipe(Parse())
+                    .on("entry", function (entry) {
+                        var output = join(tempPath, entry.path);
+                        entry.pipe(createWriteStream(output));
+                        processed.push({
+                            path: output,
+                            name: entry.path,
+                            delete: true
+                        });
+                    }).on("error", function(error){
+                        emitter.emit('showAlert', `${name} is corrupted or password protected`);
+                    })
+                    .promise();
+            } else {
+                processed.push({ path: path, name: name, delete: false });
+            }
+            index++;
+        }
 
-							promises.push(tx.run(userQuery, {props: props.users}))
-							promises.push(tx.run(computerQuery, {props: props.computers}))
-							promises.push(tx.run(groupQuery, {props: props.groups}))
+        return processed;
+    }
 
-							Promise.all(promises)
-								.then(function(){
-									tx.commit()
-										.then(function(){
-											session.close()
-											this.setState({progress: Math.floor((sent / count) * 100)})
-											parser.resume()
-										}.bind(this))
-								}.bind(this))
-						}else if (filetype === 'localadmin'){
-							var props = buildLocalAdminProps(rows.data)
-							var userQuery = 'UNWIND {props} AS prop MERGE (user:User {name: prop.account}) WITH user,prop MERGE (computer:Computer {name: prop.computer}) WITH user,computer MERGE (user)-[:AdminTo]->(computer)'
-							var groupQuery = 'UNWIND {props} AS prop MERGE (group:Group {name: prop.account}) WITH group,prop MERGE (computer:Computer {name: prop.computer}) WITH group,computer MERGE (group)-[:AdminTo]->(computer)'
-							var computerQuery = 'UNWIND {props} AS prop MERGE (computer1:Computer {name: prop.account}) WITH computer1,prop MERGE (computer2:Computer {name: prop.computer}) WITH computer1,computer2 MERGE (computer1)-[:AdminTo]->(computer2)'
+    _aboutClick() {
+        emitter.emit("showAbout");
+    }
 
-							var session = driver.session()
-							var tx = session.beginTransaction()
-							var promises = []
+    getFileMeta(file, callback){
+        let acceptableTypes = [
+            "sessions",
+            "ous",
+            "groups",
+            "gpomembers",
+            "gpos",
+            "computers",
+            "users",
+            "domains"
+        ];
+        let count;
+        
+        this.setState({
+            uploading: true,
+            progress: 0
+        });
 
-							promises.push(tx.run(userQuery, {props: props.users}))
-							promises.push(tx.run(computerQuery, {props: props.computers}))
-							promises.push(tx.run(groupQuery, {props: props.groups}))
+        let size = statSync(file).size;
+        createReadStream(file, {encoding: 'utf8', start: size-100, end: size}).on('data', chunk => {
+            let type;
+            try{
+                type = /type.?:\s?"(\w*)"/g.exec(chunk)[1];
+                count = /count.?:\s?(\d*)/g.exec(chunk)[1];
+            }catch(e){
+                type = null;
+            }
+            
 
-							Promise.all(promises)
-								.then(function(){
-									tx.commit()
-										.then(function(){
-											session.close()
-											this.setState({progress: Math.floor((sent / count) * 100)})
-											parser.resume()
-										}.bind(this))
-								}.bind(this))
-						}else if (filetype === 'domain'){
-							var props = buildDomainProps(rows.data)
-							var query = "UNWIND {props} AS prop MERGE (domain1:Domain {name: prop.domain1}) WITH domain1,prop MERGE (domain2:Domain {name: prop.domain2}) WITH domain1,domain2,prop MERGE (domain1)-[:TrustedBy {TrustType : prop.trusttype, Transitive: prop.transitive}]->(domain2)"
-							var session = driver.session()
-							session.run(query, {props: props})
-								.then(function(){
-									this.setState({progress: Math.floor((sent / count) * 100)})
-									session.close()
-									parser.resume()
-								}.bind(this))
-						}else if (filetype === 'acl'){
-							var data = buildACLProps(rows.data)
-							var promises = []
-							var session = driver.session()
-							var tx = session.beginTransaction()
-							for (var key in data){
-								var promise = tx.run(data[key].statement, {props: data[key].props})
-								promises.push(promise)
-							}
+            if (!acceptableTypes.includes(type)){
+                emitter.emit("showAlert", "Unrecognized File");
+                this.setState({
+                    uploading: false
+                });
+                callback();
+                return;
+            }
 
-							Promise.all(promises)
-								.then(function(){
-									tx.commit()
-										.then(function(){
-											this.setState({progress: Math.floor((sent / count) * 100)})
-											session.close()
-											parser.resume()
-										}.bind(this))
-								}.bind(this))
-						}
-					}.bind(this)
-				})
-			}.bind(this));
-	}
+            this.processJson(file, callback, parseInt(count), type)
+        });
+    }
 
-	render() {
-		return (
-			<div className="menudiv">
-				<div>
-					<MenuButton click={this._refreshClick.bind(this)} hoverVal="Refresh" glyphicon="glyphicon glyphicon-refresh" />
-				</div>
-				<div>
-					<MenuButton click={this._exportClick.bind(this)} hoverVal="Export Graph" glyphicon="glyphicon glyphicon-export" />
-				</div>
-				<div>
-					<MenuButton click={this._importClick.bind(this)} hoverVal="Import Graph" glyphicon="glyphicon glyphicon-import" />
-				</div>
-				<div>
-					<If condition={this.state.uploading}>
-						<Then>
-							<ProgressBarMenuButton click={this._cancelUploadClick.bind(this)} progress={this.state.progress} committed={this.state.committed}/>
-						</Then>
-						<Else>{ () =>
-							<MenuButton click={function(){jQuery(this.refs.fileInput).click()}.bind(this)} hoverVal="Upload Data" glyphicon="glyphicon glyphicon-upload" />		
-						}</Else>
-					</If>		
-				</div>
-				<div>
-					<MenuButton click={this._changeLayoutClick.bind(this)} hoverVal="Change Layout Type" glyphicon="fa fa-line-chart" />
-				</div>
-				<div>
-					<MenuButton click={this._settingsClick.bind(this)} hoverVal="Settings" glyphicon="fa fa-cogs" />
-				</div>
-				<div>
-					<MenuButton click={this._aboutClick.bind(this)} hoverVal="About" glyphicon="fa fa-info" />
-				</div>
-				<input ref="fileInput" multiple className="hide" type="file" onChange={this._uploadClick.bind(this)}/>
-			</div>
-		);
-	}
+
+    processJson(file, callback, count, type) {
+        let pipeline = chain([
+            createReadStream(file, { encoding: "utf8" }),
+            withParser({ filter: type }),
+            streamArray()
+        ]);
+        
+
+        let localcount = 0;
+        let sent = 0;
+        let chunk = [];
+        //Start a timer for fun
+
+        this.setState({
+            uploading: true,
+            progress: 0
+        });
+
+        console.log(`Processing ${file}`);
+        console.time("IngestTime");
+        pipeline
+            .on(
+                "data",
+                async function(data) {
+                    chunk.push(data.value);
+                    localcount++;
+                    
+                    if (localcount % 1000 === 0) {
+                        pipeline.pause();
+                        await this.uploadData(chunk, type);
+                        sent += chunk.length;
+                        this.setState({
+                            progress: Math.floor((sent / count) * 100)
+                        });
+                        chunk = [];
+                        pipeline.resume();
+                    }
+                }.bind(this)
+            )
+            .on(
+                "end",
+                async function() {
+                    await this.uploadData(chunk, type);
+                    this.setState({ progress: 100 });
+                    emitter.emit("refreshDBData");
+                    console.timeEnd("IngestTime");
+                    callback();
+                }.bind(this)
+            );
+    }
+
+    //DO NOT USE THIS FUNCTION FOR ANYTHING, ITS ONLY FOR TESTING
+    sleep_test(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async uploadData(chunk, type) {
+        let session = driver.session();
+        let funcMap = {
+            computers: buildComputerJson,
+            domains: buildDomainJson,
+            gpos: buildGpoJson,
+            users: buildUserJson,
+            groups: buildGroupJson,
+            ous: buildOuJson,
+            sessions: buildSessionJson,
+            gpomembers: buildGpoAdminJson
+        };
+        let data = funcMap[type](chunk);
+        for (let key in data) {
+            if (data[key].props.length === 0){
+                continue;
+            }
+            let arr = data[key].props.chunk()
+            let statement = data[key].statement;
+            for (let i = 0; i < arr.length; i++){
+                //console.log(arr[i]);
+                await session
+                .run(statement, { props: arr[i] })
+                .catch(function(error) {
+                    console.log(data[key].props)
+                    console.log(error);
+                });
+            }            
+        }
+
+        session.close();
+    }
+
+    render() {
+        return (
+            <div className="menudiv">
+                <div>
+                    <MenuButton
+                        click={this._refreshClick.bind(this)}
+                        hoverVal="Refresh"
+                        glyphicon="fas fa-sync-alt"
+                    />
+                </div>
+                <div>
+                    <MenuButton
+                        click={this._exportClick.bind(this)}
+                        hoverVal="Export Graph"
+                        glyphicon="fa fa-upload"
+                    />
+                </div>
+                <div>
+                    <MenuButton
+                        click={this._importClick.bind(this)}
+                        hoverVal="Import Graph"
+                        glyphicon="fa fa-download"
+                    />
+                </div>
+                <div>
+                    <If condition={this.state.uploading}>
+                        <Then>
+                            <ProgressBarMenuButton
+                                click={this._cancelUploadClick.bind(this)}
+                                progress={this.state.progress}
+                                committed={this.state.committed}
+                            />
+                        </Then>
+                        <Else>
+                            {() => (
+                                <MenuButton
+                                    click={function() {
+                                        jQuery(this.refs.fileInput).click();
+                                    }.bind(this)}
+                                    hoverVal="Upload Data"
+                                    glyphicon="glyphicon glyphicon-upload"
+                                />
+                            )}
+                        </Else>
+                    </If>
+                </div>
+                <div>
+                    <MenuButton
+                        click={this._changeLayoutClick.bind(this)}
+                        hoverVal="Change Layout Type"
+                        glyphicon="fa fa-chart-line"
+                    />
+                </div>
+                <div>
+                    <MenuButton
+                        click={this._settingsClick.bind(this)}
+                        hoverVal="Settings"
+                        glyphicon="fa fa-cogs"
+                    />
+                </div>
+                <div>
+                    <MenuButton
+                        click={this._aboutClick.bind(this)}
+                        hoverVal="About"
+                        glyphicon="fa fa-info"
+                    />
+                </div>
+                <input
+                    ref="fileInput"
+                    multiple
+                    className="hide"
+                    type="file"
+                    onChange={this._uploadClick.bind(this)}
+                />
+            </div>
+        );
+    }
 }

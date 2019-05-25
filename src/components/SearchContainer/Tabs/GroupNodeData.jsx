@@ -1,394 +1,494 @@
-import React, { Component } from 'react';
-import NodeALink from './NodeALink'
-import PropTypes from 'prop-types'
+import React, { Component } from "react";
+import PropTypes from "prop-types";
+import NodeCypherLink from "./NodeCypherLink";
+import NodeProps from "./NodeProps";
+import Gallery from "react-photo-gallery";
+import SelectedImage from "./SelectedImage";
+import Lightbox from "react-images";
+import { readFileSync, writeFileSync } from "fs";
+import sizeOf from "image-size";
+import md5File from "md5-file";
+import { remote } from "electron";
+const { app } = remote;
+import { join } from "path";
 
 export default class GroupNodeData extends Component {
-	constructor(){
-		super();
+    constructor() {
+        super();
 
-		this.state = {
-			label: "",
-			directMembers: -1,
-			unrolledMembers: -1,
-			directAdminTo: -1,
-			derivativeAdminTo: -1,
-			unrolledMemberOf: -1,
-			sessions: -1,
-			foreignGroupMembership: -1,
-			foreignGroupMembers: -1,
-			firstDegreeGroupMembership: -1,
-			groupDelegatedAdmin: -1,
-			firstdegreeControl: -1,
-			groupDelegatedControl: -1,
-			transitiveControl: -1,
-			firstDegreeControllers: -1,
-			unrolledControllers: -1,
-			transitiveControllers: -1,
-			driversessions: []
-		}
+        this.state = {
+            label: "",
+            driversessions: [],
+            propertyMap: {},
+            displayMap: {
+                description: "Description",
+                admincount: "Admin Count"
+            },
+            ServicePrincipalNames: [],
+            notes: null,
+            pics: [],
+            currentImage: 0,
+            lightboxIsOpen: false
+        };
 
-		emitter.on('groupNodeClicked', this.getNodeData.bind(this));
-	}
+        emitter.on("groupNodeClicked", this.getNodeData.bind(this));
+        emitter.on("computerNodeClicked", this.nullTarget.bind(this));
+        emitter.on("userNodeClicked", this.nullTarget.bind(this));
+        emitter.on("domainNodeClicked", this.nullTarget.bind(this));
+        emitter.on("gpoNodeClicked", this.nullTarget.bind(this));
+        emitter.on("ouNodeClicked", this.nullTarget.bind(this))
+        emitter.on("imageUploadFinal", this.uploadImage.bind(this));
+        emitter.on("clickPhoto", this.openLightbox.bind(this));
+        emitter.on("deletePhoto", this.handleDelete.bind(this));
+    }
 
-	getNodeData(payload){
-		$.each(this.state.driversessions, function(index, record){
-			record.close();
-		})
+    componentDidMount() {
+        jQuery(this.refs.complete).hide();
+        jQuery(this.refs.piccomplete).hide();
+    }
 
-		this.setState({
-			label: payload,
-			directMembers: -1,
-			unrolledMembers: -1,
-			directAdminTo: -1,
-			derivativeAdminTo: -1,
-			unrolledMemberOf: -1,
-			sessions: -1,
-			foreignGroupMembership: -1,
-			foreignGroupMembers: -1,
-			firstDegreeGroupMembership: -1,
-			groupDelegatedAdmin: -1,
-			firstdegreeControl: -1,
-			groupDelegatedControl: -1,
-			transitiveControl: -1,
-			firstDegreeControllers: -1,
-			unrolledControllers: -1,
-			transitiveControllers: -1
-		})
+    nullTarget() {
+        this.setState({
+            label: ""
+        });
+    }
 
-		var domain = '@' + payload.split('@').last()
-		var s1 = driver.session()
-		var s2 = driver.session()
-		var s3 = driver.session()
-		var s4 = driver.session()
-		var s5 = driver.session()
-		var s6 = driver.session()
-		var s7 = driver.session()
-		var s8 = driver.session()
-		var s9 = driver.session()
-		var s10 = driver.session()
-		var s11 = driver.session()
-		var s12 = driver.session()
-		var s13 = driver.session()
-		var s14 = driver.session()
-		var s15 = driver.session()
-		var s16 = driver.session()
+    getNodeData(payload) {
+        jQuery(this.refs.complete).hide();
+        $.each(this.state.driversessions, function(_, record) {
+            record.close();
+        });
 
-		s1.run("MATCH (a)-[b:MemberOf]->(c:Group {name:{name}}) RETURN count(a)", {name:payload})
-			.then(function(result){
-				this.setState({'directMembers':result.records[0]._fields[0].low})
-				s1.close()
-			}.bind(this))
+        this.setState({
+            label: payload
+        });
 
-		s2.run("MATCH p = (n)-[r:MemberOf*1..]->(g:Group {name:{name}}) RETURN COUNT(n)", {name:payload})
-			.then(function(result){
-				this.setState({'unrolledMembers':result.records[0]._fields[0].low})
-				s2.close()
-			}.bind(this))
+        let key = `group_${this.state.label}`;
+        let c = imageconf.get(key);
+        let pics = [];
+        if (typeof c !== "undefined"){
+            this.setState({pics: c})
+        }else{
+            this.setState({pics: pics})
+        }
 
-		s3.run("MATCH (n:Group {name:{name}})-[r:AdminTo]->(m:Computer) RETURN count(distinct(m))", {name:payload})
-			.then(function(result){
-				this.setState({'directAdminTo':result.records[0]._fields[0].low})
-				s3.close()
-			}.bind(this))
+        var propCollection = driver.session();
+        propCollection
+            .run("MATCH (c:Group {name:{name}}) RETURN c", { name: payload })
+            .then(
+                function(result) {
+                    var properties = result.records[0]._fields[0].properties;
+                    let notes;
+                    if (!properties.notes) {
+                        notes = null;
+                    } else {
+                        notes = properties.notes;
+                    }
 
-		s4.run("MATCH p = shortestPath((g:Group {name:{name}})-[r:MemberOf|AdminTo|HasSession*1..]->(c:Computer)) RETURN COUNT(DISTINCT(c))", {name:payload})
-			.then(function(result){
-				this.setState({'derivativeAdminTo':result.records[0]._fields[0].low})
-				s4.close()
-			}.bind(this))
+                    this.setState({
+                        propertyMap: properties,
+                        notes: notes
+                    });
+                    propCollection.close();
+                }.bind(this)
+            );
+    }
 
-		s5.run("MATCH p = (g1:Group {name:{name}})-[r:MemberOf*1..]->(g2:Group) RETURN COUNT(DISTINCT(g2))", {name:payload})
-			.then(function(result){
-				this.setState({'unrolledMemberOf':result.records[0]._fields[0].low})
-				s5.close()
-			}.bind(this))
+    notesChanged(event) {
+        this.setState({ notes: event.target.value });
+    }
 
-		s6.run("MATCH p = (c:Computer)-[r1:HasSession]->(u:User)-[r2:MemberOf*1..]->(g:Group {name: {name}}) RETURN COUNT(r1)", {name:payload})
-			.then(function(result){
-				this.setState({'sessions':result.records[0]._fields[0].low})
-				s6.close()
-			}.bind(this))
+    notesBlur(event) {
+        let notes =
+            this.state.notes === null || this.state.notes === ""
+                ? null
+                : this.state.notes;
+        let q = driver.session();
+        if (notes === null) {
+            q.run("MATCH (n:Group {name:{name}}) REMOVE n.notes", {
+                name: this.state.label
+            }).then(x => {
+                q.close();
+            });
+        } else {
+            q.run("MATCH (n:Group {name:{name}}) SET n.notes = {notes}", {
+                name: this.state.label,
+                notes: this.state.notes
+            }).then(x => {
+                q.close();
+            });
+        }
+        let check = jQuery(this.refs.complete);
+        check.show();
+        check.fadeOut(2000);
+    }
 
-		s7.run("MATCH (n:Group) WHERE NOT n.name ENDS WITH {domain} WITH n MATCH (m:Group {name:{name}}) MATCH (m)-[r:MemberOf]->(n) RETURN count(n)", {name:payload, domain:domain})
-			.then(function(result){
-				this.setState({'foreignGroupMembership':result.records[0]._fields[0].low})
-				s7.close()
-			}.bind(this))
+    uploadImage(files) {
+        if (!this.props.visible || files.length === 0) {
+            return;
+        }
+        let p = this.state.pics;
+        let oLen = p.length;
+        let key = `group_${this.state.label}`;
+        
+        $.each(files, (_, f) => {
+            let exists = false;
+            let hash = md5File.sync(f.path);
+            $.each(p, (_, p1) => {
+                if (p1.hash === hash){
+                    exists = true;
+                }
+            })
+            if (exists){
+                emitter.emit("showAlert", "Image already exists");
+                return;
+            }
+            let path = join(app.getPath("userData"), "images", hash);
+            let dimensions = sizeOf(f.path);
+            let data = readFileSync(f.path);
+            writeFileSync(path, data);
+            p.push({hash: hash, src: path, width: dimensions.width, height: dimensions.height})
+        });
 
-		s8.run("MATCH p = (n)-[r:MemberOf*1..]->(g:Group {name:{name}}) WHERE NOT g.domain = n.domain RETURN COUNT(DISTINCT(n))", {name:payload})
-			.then(function(result){
-				this.setState({'foreignGroupMembers':result.records[0]._fields[0].low})
-				s8.close()
-			}.bind(this))
+        if (p.length === oLen){
+            return;
+        }
+        this.setState({pics: p});
+        imageconf.set(key, p)
+        let check = jQuery(this.refs.piccomplete);
+        check.show();
+        check.fadeOut(2000);
+    }
 
-		s9.run("MATCH p = (g1:Group {name:{name}})-[r:MemberOf]->(g2:Group) RETURN COUNT(DISTINCT(g2))", {name:payload})
-			.then(function(result){
-				this.setState({'firstDegreeGroupMembership':result.records[0]._fields[0].low})
-				s9.close()
-			}.bind(this))
+    handleDelete(event) {
+        if (!this.props.visible) {
+            return;
+        }
+        let pics = this.state.pics;
+        let temp = pics[event.index];
+        pics.splice(event.index, 1);
+        this.setState({
+            pics: pics
+        })
+        let key = `group_${this.state.label}`;
+        imageconf.set(key, pics);
+        
+        let check = jQuery(this.refs.piccomplete);
+        check.show();
+        check.fadeOut(2000);
+    }
 
-		s10.run("MATCH p = (g1:Group {name:{name}})-[r1:MemberOf*1..]->(g2:Group)-[r2:AdminTo]->(c:Computer) RETURN COUNT(DISTINCT(c))", {name:payload})
-			.then(function(result){
-				this.setState({'groupDelegatedAdmin':result.records[0]._fields[0].low})
-				s10.close()
-			}.bind(this))
+    openLightbox(event) {
+        if (!this.props.visible) {
+            return;
+        }
+        this.setState({
+            currentImage: event.index,
+            lightboxIsOpen: true
+        });
+    }
+    closeLightbox() {
+        if (!this.props.visible) {
+            return;
+        }
+        this.setState({
+            currentImage: 0,
+            lightboxIsOpen: false
+        });
+    }
+    gotoPrevious() {
+        if (!this.props.visible) {
+            return;
+        }
+        this.setState({
+            currentImage: this.state.currentImage - 1
+        });
+    }
+    gotoNext() {
+        if (!this.props.visible) {
+            return;
+        }
+        this.setState({
+            currentImage: this.state.currentImage + 1
+        });
+    }
 
-		s11.run("MATCH p = (g:Group {name:{name}})-[r:AddMembers|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner]->(n) RETURN COUNT(DISTINCT(n))", {name:payload})
-			.then(function(result){
-				this.setState({'firstdegreeControl':result.records[0]._fields[0].low})
-				s11.close()
-			}.bind(this))
+    render() {
+        let gallery;
+        if (this.state.pics.length === 0){
+            gallery = (<span>Drop pictures on here to upload!</span>)
+        }else{
+            gallery = (
+            <React.Fragment>
+                <Gallery
+                    photos={this.state.pics}
+                    ImageComponent={SelectedImage}
+                    className={"gallerymod"}
+                />
+                <Lightbox
+                    images={this.state.pics}
+                    isOpen={this.state.lightboxIsOpen}
+                    onClose={this.closeLightbox.bind(this)}
+                    onClickPrev={this.gotoPrevious.bind(this)}
+                    onClickNext={this.gotoNext.bind(this)}
+                    currentImage={this.state.currentImage}
+                />
+            </React.Fragment>)
+        }
+        return (
+            <div className={this.props.visible ? "" : "displaynone"}>
+                <dl className="dl-horizontal">
+                    <h4>Node Info</h4>
+                    <dt>Name</dt>
+                    <dd>{this.state.label}</dd>
+                    <NodeProps
+                        properties={this.state.propertyMap}
+                        displayMap={this.state.displayMap}
+                        ServicePrincipalNames={this.state.ServicePrincipalNames}
+                    />
+                    <NodeCypherLink
+                        property="Sessions"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p = (c:Computer)-[n:HasSession]->(u:User)-[r2:MemberOf*1..]->(g:Group {name: {name}})"
+                        }
+                        end={this.state.label}
+                    />
 
-		s12.run("MATCH p = (g1:Group {name:{name}})-[r1:MemberOf*1..]->(g2:Group)-[r2:AddMembers|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner]->(n) RETURN COUNT(DISTINCT(n))", {name:payload})
-			.then(function(result){
-				this.setState({'groupDelegatedControl':result.records[0]._fields[0].low})
-				s12.close()
-			}.bind(this))
+                    <NodeCypherLink
+                        property="Reachable High Value Targets"
+                        target={this.state.label}
+                        baseQuery={
+                            'MATCH (m:Group {name:{name}}),(n {highvalue:true}),p=shortestPath((m)-[r*1..]->(n)) WHERE NONE (r IN relationships(p) WHERE type(r)= "GetChanges") AND NONE (r in relationships(p) WHERE type(r)="GetChangesAll") AND NOT m=n'
+                        }
+                        start={this.state.label}
+                    />
 
-		s13.run("MATCH p = shortestPath((g:Group {name:{name}})-[r:MemberOf|AddMembers|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner*1..]->(n)) RETURN COUNT(DISTINCT(n))", {name:payload})
-			.then(function(result){
-				this.setState({'transitiveControl':result.records[0]._fields[0].low})
-				s13.close()
-			}.bind(this))
+                    {/* <NodeCypherLink property="Sibling Objects in the Same OU" target={this.state.label} baseQuery={"MATCH (o1:OU)-[r1:Contains]->(g1:Group {name:{name}}) WITH o1 MATCH p= (d: Domain)-[r2:Contains*1..]->(o1)-[r3:Contains]->(n)"} /> */}
 
-		s14.run("MATCH p = (n)-[r:AddMembers|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner]->(g:Group {name:{name}}) RETURN COUNT(DISTINCT(n))", {name:payload})
-			.then(function(result){
-				this.setState({'firstDegreeControllers':result.records[0]._fields[0].low})
-				s14.close()
-			}.bind(this))
+                    <h4>Group Members</h4>
+                    <NodeCypherLink
+                        property="Direct Members"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p=(n)-[b:MemberOf]->(c:Group {name: {name}})"
+                        }
+                        end={this.state.label}
+                    />
 
-		s15.run("MATCH p = (n1)-[r:MemberOf*1..]->(g1:Group)-[r1:AddMembers|AllExtendedRights|GenericAll|GenericWrite|WriteDacl|WriteOwner]->(g2:Group {name: {name}}) WITH LENGTH(p) as pathLength, p, n1 WHERE NONE (x in NODES(p)[1..(pathLength-1)] WHERE x.name = g2.name) AND NOT n1.name = g2.name RETURN COUNT(DISTINCT(n1))", {name:payload})
-			.then(function(result){
-				this.setState({'unrolledControllers':result.records[0]._fields[0].low})
-				s15.close()
-			}.bind(this))
+                    <NodeCypherLink
+                        property="Unrolled Members"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p =(n)-[r:MemberOf*1..]->(g:Group {name:{name}})"
+                        }
+                        end={this.state.label}
+                    />
 
-		s16.run("MATCH p = shortestPath((n)-[r:MemberOf|AddMembers|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner*1..]->(g:Group {name:{name}})) RETURN COUNT(DISTINCT(n))", {name:payload})
-			.then(function(result){
-				this.setState({'transitiveControllers':result.records[0]._fields[0].low})
-				s16.close()
-			}.bind(this))
-		
-		this.setState({'driversessions': [s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12,s13,s14,s15,s16]})
-	}
+                    <NodeCypherLink
+                        property="Foreign Members"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p = (n)-[r:MemberOf*1..]->(g:Group {name:{name}}) WHERE NOT g.domain = n.domain"
+                        }
+                        end={this.state.label}
+                        distinct
+                    />
 
-	render() {
-		var domain = '@' + this.state.label.split('@')
-		return (
-			<div className={this.props.visible ? "" : "displaynone"}>
-				<dl className='dl-horizontal'>
-				    <h4>Node Info</h4>
-					<dt>
-						Name
-					</dt>
-					<dd>
-						{this.state.label}
-					</dd>
-					<dt>
-						Sessions
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.sessions !== -1}
-							value={this.state.sessions}
-							click={function(){
-								emitter.emit('query', "MATCH p = (c:Computer)-[r1:HasSession]->(u:User)-[r2:MemberOf*1..]->(g:Group {name: {name}}) RETURN p", {name: this.state.label},
-									"",this.state.label)
-							}.bind(this)} />
-					</dd>
-					<br />
-					<h4>Group Members</h4>
-					<dt>
-						Direct Members
-					</dt>
-					<dd>
-						<NodeALink 
-							ready={this.state.directMembers !== -1}
-							value={this.state.directMembers}
-							click={function(){
-								emitter.emit('query', "MATCH (n)-[r:MemberOf]->(m:Group {name:{name}}) RETURN n,r,m", {name: this.state.label})
-							}.bind(this)} />
-					</dd>
-					<dt>
-						Unrolled Members
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.unrolledMembers !== -1}
-							value={this.state.unrolledMembers}
-							click={function(){
-								emitter.emit('query', "MATCH p = (n)-[r:MemberOf*1..]->(g:Group {name:{name}}) RETURN p", {name: this.state.label},
-									this.state.label)
-							}.bind(this)} />
-					</dd>
-					<dt>
-						Foreign Members
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.foreignGroupMembers !== -1}
-							value={this.state.foreignGroupMembers}
-							click={function(){
-								emitter.emit('query', "MATCH p = (n)-[r:MemberOf*1..]->(g:Group {name:{name}}) WHERE NOT g.domain = n.domain RETURN p", {name: this.state.label},
-									this.state.label)
-							}.bind(this)} />
-					</dd>
-					<br />
-					<h4>Group Membership</h4>
-					<dt>
-					    First Degree Group Membership
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.firstDegreeGroupMembership !== -1}
-							value={this.state.firstDegreeGroupMembership}
-							click={function(){
-								emitter.emit('query', "MATCH p = (g1:Group {name:{name}})-[r:MemberOf]->(g2:Group) RETURN p", {name: this.state.label},
-									this.state.label)
-							}.bind(this)} />
-					</dd>
-					<dt>
-						Unrolled Member Of
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.unrolledMemberOf !== -1}
-							value={this.state.unrolledMemberOf}
-							click={function(){
-								emitter.emit('query', "MATCH p = (g1:Group {name:{name}})-[r:MemberOf*1..]->(g2:Group) RETURN p", {name: this.state.label},
-									this.state.label)
-							}.bind(this)} />
-					</dd>
-					<dt>
-						Foreign Group Membership
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.foreignGroupMembership !== -1}
-							value={this.state.foreignGroupMembership}
-							click={function(){
-								emitter.emit('query', "MATCH (n:Group) WHERE NOT n.name ENDS WITH {domain} WITH n MATCH (m:Group {name:{name}}) MATCH (m)-[r:MemberOf]->(n) RETURN m,r,n", {name: this.state.label, domain: domain})
-							}.bind(this)} />
-					</dd>
-					<br />
-					<h4>Local Admin Rights</h4>
-					<dt>
-						First Degree Local Admin
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.directAdminTo !== -1}
-							value={this.state.directAdminTo}
-							click={function(){
-								emitter.emit('query', "MATCH p=(g:Group {name:{name}})-[r:AdminTo]->(c:Computer) RETURN p", {name: this.state.label},
-									this.state.label)
-							}.bind(this)} />
-					</dd>
-					<dt>
-						Group Delegated Local Admin Rights
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.groupDelegatedAdmin !== -1}
-							value={this.state.groupDelegatedAdmin}
-							click={function(){
-								emitter.emit('query', "MATCH p = (g1:Group {name:{name}})-[r1:MemberOf*1..]->(g2:Group)-[r2:AdminTo]->(c:Computer) RETURN p", {name: this.state.label},
-									this.state.label)
-							}.bind(this)} />
-					</dd>
-					<dt>
-						Derivative Local Admin Rights
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.derivativeAdminTo !== -1}
-							value={this.state.derivativeAdminTo}
-							click={function(){
-								emitter.emit('query', "MATCH p = shortestPath((g:Group {name:{name}})-[r:MemberOf|AdminTo|HasSession*1..]->(c:Computer)) RETURN p", {name: this.state.label},
-									this.state.label)
-							}.bind(this)} />
-					</dd>
-					<br />
-					<h4>Outbound Object Control</h4>
-					<dt>
-						First Degree Object Control
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.firstdegreeControl !== -1}
-							value={this.state.firstdegreeControl}
-							click={function(){
-								emitter.emit('query', "MATCH p = (g:Group {name:{name}})-[r1:AddMembers|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner]->(n) RETURN p", {name:this.state.label})
-							}.bind(this)} />
-					</dd>
-					<dt>
-						Group Delegated Object Control
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.groupDelegatedControl !== -1}
-							value={this.state.groupDelegatedControl}
-							click={function(){
-								emitter.emit('query', "MATCH p = (g1:Group {name:{name}})-[r1:MemberOf*1..]->(g2:Group)-[r2:AddMembers|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner]->(n) RETURN p", {name:this.state.label}
-									,this.state.label)
-							}.bind(this)} />
-					</dd>
-					<dt>
-						Transitive Object Control
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.transitiveControl !== -1}
-							value={this.state.transitiveControl}
-							click={function(){	
-								emitter.emit('query', "MATCH p = shortestPath((g:Group {name:{name}})-[r1:MemberOf|AddMembers|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner*1..]->(n)) RETURN p", {name:this.state.label}
-									,this.state.label)
-							}.bind(this)} />
-					</dd>
-					<br />
-					<h4>Inbound Object Control</h4>
-					<dt>
-					    Explicit Object Controllers
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.firstDegreeControllers !== -1}
-							value={this.state.firstDegreeControllers}
-							click={function(){	
-								emitter.emit('query', "MATCH p = (n)-[r:AddMembers|AllExtendedRights|GenericAll|GenericWrite|WriteDacl|WriteOwner]->(g:Group {name: {name}}) RETURN p", {name:this.state.label}
-									,this.state.label)
-							}.bind(this)} />
-					</dd>
-					<dt>
-					    Unrolled Object Controllers
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.unrolledControllers !== -1}
-							value={this.state.unrolledControllers}
-							click={function(){	
-								emitter.emit('query', "MATCH p = (n1)-[r:MemberOf*1..]->(g1:Group)-[r1:AddMembers|AllExtendedRights|GenericAll|GenericWrite|WriteDacl|WriteOwner]->(g2:Group {name: {name}}) WITH LENGTH(p) as pathLength, p, n1 WHERE NONE (x in NODES(p)[1..(pathLength-1)] WHERE x.name = g2.name) AND NOT n1.name = g2.name RETURN p", {name:this.state.label}
-									,this.state.label)
-							}.bind(this)} />
-					</dd>
-					<dt>
-					    Transitive Object Controllers
-					</dt>
-					<dd>
-						<NodeALink
-							ready={this.state.transitiveControllers !== -1}
-							value={this.state.transitiveControllers}
-							click={function(){	
-								emitter.emit('query', "MATCH p = shortestPath((n)-[r:MemberOf|AddMembers|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner*1..]->(g:Group {name: {name}})) RETURN p", {name:this.state.label}
-									,this.state.label)
-							}.bind(this)} />
-					</dd>
-				</dl>
-			</div>
-		);
-	}
+                    <h4>Group Membership</h4>
+                    <NodeCypherLink
+                        property="First Degree Group Membership"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p=(g1:Group {name:{name}})-[r:MemberOf]->(n:Group)"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Unrolled Member Of"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p = (g1:Group {name:{name}})-[r:MemberOf*1..]->(n:Group)"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Foreign Group Membership"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p=(m:Group {name:{name}})-[r:MemberOf]->(n) WHERE NOT m.domain=n.domain"
+                        }
+                        start={this.state.label}
+                    />
+
+                    <h4>Local Admin Rights</h4>
+
+                    <NodeCypherLink
+                        property="First Degree Local Admin"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p=(m:Group {name: {name}})-[r:AdminTo]->(n:Computer)"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Group Delegated Local Admin Rights"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p = (g1:Group {name:{name}})-[r1:MemberOf*1..]->(g2:Group)-[r2:AdminTo]->(n:Computer)"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Derivative Local Admin Rights"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p = shortestPath((g:Group {name:{name}})-[r:MemberOf|AdminTo|HasSession*1..]->(n:Computer))"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <h4>Execution Privileges</h4>
+                    <NodeCypherLink
+                        property="First Degree RDP Privileges"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p=(m:Group {name:{name}})-[r:CanRDP]->(n:Computer)"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Group Delegated RDP Privileges"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p=(m:Group {name:{name}})-[r1:MemberOf*1..]->(g:Group)-[r2:CanRDP]->(n:Computer)"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="First Degree DCOM Privileges"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p=(m:Group {name:{name}})-[r:ExecuteDCOM]->(n:Computer)"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Group Delegated DCOM Privileges"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p=(m:Group {name:{name}})-[r1:MemberOf*1..]->(g:Group)-[r2:ExecuteDCOM]->(n:Computer)"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <h4>Outbound Object Control</h4>
+
+                    <NodeCypherLink
+                        property="First Degree Object Control"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p = (g:Group {name:{name}})-[r]->(n) WHERE r.isacl=true"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Group Delegated Object Control"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p = (g1:Group {name:{name}})-[r1:MemberOf*1..]->(g2:Group)-[r2]->(n) WHERE r2.isacl=true"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Transitive Object Control"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH (n) WHERE NOT n.name={name} WITH n MATCH p = shortestPath((g:Group {name:{name}})-[r:MemberOf|AddMember|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner|Owns*1..]->(n))"
+                        }
+                        start={this.state.label}
+                        distinct
+                    />
+
+                    <h4>Inbound Object Control</h4>
+
+                    <NodeCypherLink
+                        property="Explicit Object Controllers"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p = (n)-[r:AddMember|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner|Owns]->(g:Group {name:{name}})"
+                        }
+                        end={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Unrolled Object Controllers"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH p = (n)-[r:MemberOf*1..]->(g1:Group)-[r1]->(g2:Group {name: {name}}) WITH LENGTH(p) as pathLength, p, n WHERE NONE (x in NODES(p)[1..(pathLength-1)] WHERE x.name = g2.name) AND NOT n.name = g2.name AND r1.isacl=true"
+                        }
+                        end={this.state.label}
+                        distinct
+                    />
+
+                    <NodeCypherLink
+                        property="Transitive Object Controllers"
+                        target={this.state.label}
+                        baseQuery={
+                            "MATCH (n) WHERE NOT n.name={name} WITH n MATCH p = shortestPath((n)-[r:MemberOf|AddMember|AllExtendedRights|ForceChangePassword|GenericAll|GenericWrite|WriteDacl|WriteOwner|Owns*1..]->(g:Group {name:{name}}))"
+                        }
+                        end={this.state.label}
+                        distinct
+                    />
+                </dl>
+                <div>
+                    <h4 className={"inline"}>Notes</h4>
+                    <i
+                        ref="complete"
+                        className="fa fa-check-circle green-icon-color notes-check-style"
+                    />
+                </div>
+                <textarea
+                    onBlur={this.notesBlur.bind(this)}
+                    onChange={this.notesChanged.bind(this)}
+                    value={this.state.notes === null ? "" : this.state.notes}
+                    className={"node-notes-textarea"}
+                    ref="notes"
+                />
+                <div>
+                    <h4 className={"inline"}>Pictures</h4>
+                    <i
+                        ref="piccomplete"
+                        className="fa fa-check-circle green-icon-color notes-check-style"
+                    />
+                </div>
+                {gallery}
+            </div>
+        );
+    }
 }
 
 GroupNodeData.propTypes = {
-	visible : React.PropTypes.bool.isRequired
-}
+    visible: PropTypes.bool.isRequired
+};

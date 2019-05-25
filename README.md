@@ -1,11 +1,11 @@
 # Downloading BloodHound Binaries
-Pre-Compiled BloodHound binaries can be found [here](https://github.com/adaptivethreat/BloodHound/releases). 
+Pre-Compiled BloodHound binaries can be found [here](https://github.com/BloodHoundAD/BloodHound/releases). 
 
 The rolling release will always be updated to the most recent source. Tagged releases are considered "stable" but will likely not have new features or fixes.
 
 # About BloodHound
 
-To get started with BloodHound, check out the [BloodHound Github Wiki.](https://github.com/adaptivethreat/Bloodhound/wiki)
+To get started with BloodHound, check out the [BloodHound Github Wiki.](https://github.com/BloodHoundAD/Bloodhound/wiki)
 
 BloodHound is a single page Javascript web application, built on top of [Linkurious](http://linkurio.us/), compiled with [Electron](http://electron.atom.io/), with a [Neo4j](https://neo4j.com/) database fed by a PowerShell ingestor.
 
@@ -13,11 +13,13 @@ BloodHound uses graph theory to reveal the hidden and often unintended relations
 
 BloodHound is developed by [@_wald0](https://www.twitter.com/_wald0), [@CptJesus](https://twitter.com/CptJesus), and [@harmj0y](https://twitter.com/harmj0y).
 
+A sample database generator can be found [here](https://github.com/BloodHoundAD/BloodHound-Tools/tree/master/DBCreator)
+
 # License
 
 BloodHound uses graph theory to reveal hidden relationships and
 attack paths in an Active Directory environment.
-Copyright (C) 2016 Andrew Robbins, Rohan Vazarkar, Will Schroeder
+Copyright (C) 2016-2019 Andrew Robbins, Rohan Vazarkar, Will Schroeder
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
