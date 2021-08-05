@@ -1,106 +1,100 @@
-import React, { Component } from "react";
+import React, { useEffect, useState, useContext } from 'react';
+import PropTypes from 'prop-types';
+import PoseContainer from '../PoseContainer';
+import Draggable from 'react-draggable';
+import styles from './ExportContainer.module.css';
+import { Panel, Button, ListGroup, ListGroupItem } from 'react-bootstrap';
+import { AppContext } from '../../AppContext';
+import clsx from 'clsx';
+import { useDragControls } from 'framer-motion';
+import { Table } from 'react-bootstrap';
 
-export default class ExportContainer extends Component {
-    constructor() {
-        super();
+const ExportContainer = () => {
+    const [jsonActive, setJsonActive] = useState(true);
+    const [imageActive, setImageActive] = useState(false);
+    const [visible, setVisible] = useState(false);
+    const dragControl = useDragControls();
 
-        this.state = {
-            jsonActive: true,
-            imageActive: false
-        };
-    }
-    
-    componentDidMount() {
-        $(this.refs.outer).fadeToggle(0);
-        $(this.refs.outer).draggable();
-        emitter.on("showExport", this._show.bind(this));
-    }
+    const context = useContext(AppContext);
 
-    _dismiss() {
-        $(this.refs.outer).fadeToggle(false);
-    }
-
-    _show() {
+    const handleShow = () => {
         closeTooltip();
-        $(this.refs.outer).fadeToggle(true);
-    }
+        setVisible(true);
+    };
 
-    _jsonClick() {
-        this.setState({ jsonActive: true, imageActive: false });
-    }
+    const handleClose = () => {
+        setVisible(false);
+    };
 
-    _imageClick() {
-        this.setState({ jsonActive: false, imageActive: true });
-    }
+    const startPNGExport = () => {
+        emitter.emit('export', 'image');
+    };
 
-    _buttonClick() {
-        emitter.emit("export", this.state.jsonActive ? "json" : "image");
-    }
+    const startJSONExport = () => {
+        emitter.emit('export', 'json');
+    };
 
-    render() {
-        return (
-            <div className="floating-div" ref="outer">
-                <div className="panel-heading">
+    useEffect(() => {
+        emitter.on('showExport', handleShow);
+        return () => {
+            emitter.removeListener('showExport', handleShow);
+        };
+    }, []);
+
+    return (
+        <PoseContainer
+            visible={visible}
+            className={clsx(
+                styles.container,
+                context.darkMode ? styles.dark : null
+            )}
+            dragHandle={dragControl}
+        >
+            <Panel>
+                <Panel.Heading onMouseDown={(e) => dragControl.start(e)}>
                     Export Graph
-                    <button
-                        type="button"
-                        className="close"
-                        onClick={this._dismiss.bind(this)}
-                        aria-label="Close"
+                    <Button
+                        onClick={handleClose}
+                        className='close'
+                        aria-label='Close'
                     >
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
+                        <span aria-hidden='true'>x</span>
+                    </Button>
+                </Panel.Heading>
 
-                <div className="panel-body">
-                    <div className="list-group">
-                        <a
-                            href="#"
-                            onClick={this._jsonClick.bind(this)}
-                            className={
-                                this.state.jsonActive
-                                    ? "list-group-item active"
-                                    : "list-group-item"
-                            }
-                        >
-                            <h4 className="list-group-item-heading">
-                                Export to JSON
-                            </h4>
-                            <p className="list-group-item-text">
-                                Use this format to export data and re-import it
-                                later
-                            </p>
-                        </a>
-
-                        <a
-                            href="#"
-                            onClick={this._imageClick.bind(this)}
-                            className={
-                                this.state.imageActive
-                                    ? "list-group-item active"
-                                    : "list-group-item"
-                            }
-                        >
-                            <h4 className="list-group-item-heading">
-                                Export to Image
-                            </h4>
-                            <p className="list-group-item-text">
-                                Use this format to export data and view it as an
-                                image
-                            </p>
-                        </a>
+                <Panel.Body>
+                    <div
+                        className={
+                            context.darkMode ? styles.itemlistdark : null
+                        }
+                    >
+                        <Table>
+                            <thead></thead>
+                            <tbody className='searchable'>
+                                <tr
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={startJSONExport}
+                                >
+                                    <td width='200px' align='center'>
+                                        Export to JSON
+                                    </td>
+                                </tr>
+                                <tr
+                                    style={{ cursor: 'pointer' }}
+                                    onClick={startPNGExport}
+                                >
+                                    <td width='200px' align='center'>
+                                        Export to PNG
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </Table>
                     </div>
+                </Panel.Body>
+            </Panel>
+        </PoseContainer>
+    );
+};
 
-                    <div style={{ textAlign: "center" }}>
-                        <button
-                            onClick={this._buttonClick.bind(this)}
-                            className="btn btn-lg"
-                        >
-                            Export Data
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-}
+ExportContainer.propTypes = {};
+export default ExportContainer;
