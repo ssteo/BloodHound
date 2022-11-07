@@ -1,19 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import PropTypes from 'prop-types';
+import React, { useContext, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import CollapsibleSection from './Components/CollapsibleSection';
-import NodeCypherLinkComplex from './Components/NodeCypherLinkComplex';
 import NodeCypherLink from './Components/NodeCypherLink';
-import NodeCypherNoNumberLink from './Components/NodeCypherNoNumberLink';
 import MappedNodeProps from './Components/MappedNodeProps';
-import ExtraNodeProps from './Components/ExtraNodeProps';
 import NodePlayCypherLink from './Components/NodePlayCypherLink';
-import Notes from './Components/Notes';
-import { withAlert } from 'react-alert';
-import NodeGallery from './Components/NodeGallery';
 import { Table } from 'react-bootstrap';
 import styles from './NodeData.module.css';
-import { useContext } from 'react';
 import { AppContext } from '../../../AppContext';
 
 const AZResourceGroupNodeData = () => {
@@ -59,6 +51,7 @@ const AZResourceGroupNodeData = () => {
 
     const displayMap = {
         objectid: 'Object ID',
+        tenantid: 'Tenant ID',
     };
 
     return objectid === null ? (
@@ -81,7 +74,7 @@ const AZResourceGroupNodeData = () => {
 
                 <hr></hr>
 
-                <CollapsibleSection header='Descendent Objects'>
+                <CollapsibleSection header='DESCENDENT OBJECTS'>
                     <div className={styles.itemlist}>
                         <Table>
                             <thead></thead>
@@ -110,7 +103,7 @@ const AZResourceGroupNodeData = () => {
 
                 <hr></hr>
 
-                <CollapsibleSection header='Inbound Object Control'>
+                <CollapsibleSection header='INBOUND OBJECT CONTROL'>
                     <div className={styles.itemlist}>
                         <Table>
                             <thead></thead>
@@ -128,7 +121,7 @@ const AZResourceGroupNodeData = () => {
                                     property='Unrolled Object Controllers'
                                     target={objectid}
                                     baseQuery={
-                                        'MATCH p = (n)-[r:MemberOf*1..]->(g1:Group)-[r1:AZOwns|AZUserAccessAdministrator]->(g2:AZResourceGroup {objectid: $objectid}) WITH LENGTH(p) as pathLength, p, n WHERE NONE (x in NODES(p)[1..(pathLength-1)] WHERE x.objectid = g2.objectid) AND NOT n.objectid = g2.objectid'
+                                        'MATCH p = (n)-[r:AZMemberOf]->(g1)-[r1:AZOwns|AZUserAccessAdministrator]->(g2:AZResourceGroup {objectid: $objectid}) WITH LENGTH(p) as pathLength, p, n WHERE NONE (x in NODES(p)[1..(pathLength-1)] WHERE x.objectid = g2.objectid) AND NOT n.objectid = g2.objectid'
                                     }
                                     end={label}
                                     distinct

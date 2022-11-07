@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import PropTypes from 'prop-types';
+import React, { useContext, useEffect, useState } from 'react';
 import styles from './DatabaseDataDisplay.module.css';
 import { Table } from 'react-bootstrap';
 import DatabaseDataLabel from './Components/DatabaseDataLabel';
-import { useContext } from 'react';
 import { AppContext } from '../../../AppContext';
 import clsx from 'clsx';
 import CollapsibleSection from './Components/CollapsibleSection';
@@ -173,6 +171,11 @@ const DatabaseDataDisplay = () => {
                             label={'AZResourceGroup'}
                         />
                         <DatabaseDataLabel
+                            query={'MATCH (n:AZRole) RETURN count(n) AS count'}
+                            index={index}
+                            label={'AZRole'}
+                        />
+                        <DatabaseDataLabel
                             query={
                                 'MATCH (n:AZServicePrincipal) RETURN count(n) AS count'
                             }
@@ -186,7 +189,6 @@ const DatabaseDataDisplay = () => {
                             index={index}
                             label={'AZSubscription'}
                         />
-
                         <DatabaseDataLabel
                             query={
                                 'MATCH (n:AZTenant) RETURN count(n) AS count'
@@ -210,7 +212,7 @@ const DatabaseDataDisplay = () => {
 
             <hr></hr>
 
-            <div className={clsx('text-center', styles.buttongroup)} width="90%">
+            <div className={clsx('text-center', styles.buttongroup)}>
                 <div role='group' className={styles.buttongroup}>
                     <button
                         type='button'

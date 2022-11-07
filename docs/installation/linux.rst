@@ -27,14 +27,14 @@ Install neo4j
 ::
 
   wget -O - https://debian.neo4j.com/neotechnology.gpg.key | sudo apt-key add -
-  echo 'deb https://debian.neo4j.com stable 4.0' > /etc/apt/sources.list.d/neo4j.list
+  echo 'deb https://debian.neo4j.com stable latest' > /etc/apt/sources.list.d/neo4j.list
   sudo apt-get update
 
 2. Install apt-transport-https with apt
 
 ::
 
-  apt-get install apt-transport-https
+  sudo apt-get install apt-transport-https
 
 2. Install neo4j community edition using apt:
 
@@ -46,7 +46,7 @@ Install neo4j
 
 ::
 
-  systemctl stop neo4j
+  sudo systemctl stop neo4j
 
 4. Start neo4j as a console application and verify it starts up without errors:
 
@@ -76,7 +76,7 @@ Or use systemctl to start neo4j:
 
 ::
 
-  systemctl start neo4j
+  sudo systemctl start neo4j
 
 6. Open a web browser and navigate to https://localhost:7474/. You should see the neo4j web console.
 
@@ -119,8 +119,8 @@ Alternative: Build the BloodHound GUI
 
   npm install
 
-5. Build BloodHound with 'npm run linuxbuild':
+5. Build BloodHound with 'npm run build:linux':
 
 ::
 
-  npm run linuxbuild
+  npm run build:linux
